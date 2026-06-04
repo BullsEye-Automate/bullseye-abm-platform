@@ -41,6 +41,7 @@ export function SegmentDetail({ segmentId, campaign, client, onBack }: Props) {
   const srcDocRef = useRef<HTMLInputElement>(null);
   const [newSrcUrl, setNewSrcUrl] = useState("");
   const [srcUploading, setSrcUploading] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const [genJobs, setGenJobs] = useState(GenService.getJobs());
   useEffect(() => {
@@ -206,12 +207,24 @@ export function SegmentDetail({ segmentId, campaign, client, onBack }: Props) {
     sourcesRepo.listByClient(client.id).then(setSources);
   };
 
-  const handleSrcDoc = async (e: ChangeEvent<HTMLInputElement>) => {
-    if (!client) return;
+  const handleSrcDocSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+    setPendingFiles(prev => {
+      const existingNames = new Set(prev.map(f => f.name));
+      return [...prev, ...files.filter(f => !existingNames.has(f.name))];
+    });
+    if (e.target) e.target.value = "";
+  };
+
+  const removePendingFile = (name: string) => {
+    setPendingFiles(prev => prev.filter(f => f.name !== name));
+  };
+
+  const uploadPendingFiles = async () => {
+    if (!client || !pendingFiles.length) return;
     setSrcUploading(true);
-    for (const f of files) {
+    for (const f of pendingFiles) {
       try {
         if (f.name.toLowerCase().endsWith(".pdf")) {
           const path = `bullseye-pdfs/${client.id}/${Date.now()}-${f.name}`;
@@ -225,8 +238,8 @@ export function SegmentDetail({ segmentId, campaign, client, onBack }: Props) {
         }
       } catch (err) { console.error("Error subiendo fuente:", err); }
     }
+    setPendingFiles([]);
     setSrcUploading(false);
-    if (e.target) e.target.value = "";
     sourcesRepo.listByClient(client.id).then(setSources);
   };
 
@@ -506,14 +519,51 @@ export function SegmentDetail({ segmentId, campaign, client, onBack }: Props) {
                     </div>
                   </div>
                   <div style={{ background: C.pageBg, border: "1px solid " + C.border, borderRadius: "8px", padding: "12px" }}>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: C.textMd, marginBottom: "8px" }}>Subir documentos</div>
-                    <div
-                      onClick={() => srcDocRef.current?.click()}
-                      style={{ border: "2px dashed " + C.borderMd, borderRadius: "6px", padding: "8px", textAlign: "center", cursor: "pointer", fontSize: "12px", color: C.textMuted }}
-                    >
-                      {srcUploading ? "Procesando..." : "PDF / TXT (múltiples archivos)"}
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: C.textMd, marginBottom: "8px" }}>
+                      Subir documentos
+                      <span style={{ fontWeight: 400, color: C.textFaint, marginLeft: "6px" }}>.pdf · .txt · .md</span>
                     </div>
-                    <input ref={srcDocRef} type="file" accept=".pdf,.txt,.md" multiple style={{ display: "none" }} onChange={handleSrcDoc} />
+                    <div
+                      onClick={() => !srcUploading && srcDocRef.current?.click()}
+                      style={{
+                        border: "2px dashed " + C.borderMd, borderRadius: "6px", padding: "14px 8px",
+                        textAlign: "center", cursor: srcUploading ? "default" : "pointer",
+                        fontSize: "12px", color: C.textMuted,
+                      }}
+                    >
+                      {srcUploading ? "Subiendo..." : "Haz clic o arrastra archivos (puedes seleccionar varios)"}
+                    </div>
+                    <input ref={srcDocRef} type="file" accept=".pdf,.txt,.md" multiple style={{ display: "none" }} onChange={handleSrcDocSelect} />
+
+                    {pendingFiles.length > 0 && (
+                      <div style={{ marginTop: "10px" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: C.textMuted, textTransform: "uppercase", marginBottom: "6px" }}>
+                          {pendingFiles.length} archivo{pendingFiles.length !== 1 ? "s" : ""} listo{pendingFiles.length !== 1 ? "s" : ""} para subir
+                        </div>
+                        {pendingFiles.map(f => (
+                          <div key={f.name} style={{
+                            display: "flex", alignItems: "center", gap: "8px",
+                            padding: "5px 8px", background: C.accentBg, borderRadius: "5px", marginBottom: "4px",
+                          }}>
+                            <span style={{ fontSize: "12px", color: "#C0392B", fontWeight: 700 }}>PDF</span>
+                            <span style={{ flex: 1, fontSize: "12px", color: C.textMd, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                            <span style={{ fontSize: "11px", color: C.textFaint }}>{(f.size / 1024).toFixed(0)} KB</span>
+                            <button
+                              onClick={() => removePendingFile(f.name)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: C.textFaint, fontSize: "14px", lineHeight: 1, padding: "0 2px" }}
+                            >×</button>
+                          </div>
+                        ))}
+                        <Btn
+                          v="primary"
+                          onClick={uploadPendingFiles}
+                          disabled={srcUploading}
+                          style={{ marginTop: "8px", width: "100%", justifyContent: "center" }}
+                        >
+                          {srcUploading ? "Subiendo..." : `Subir ${pendingFiles.length} archivo${pendingFiles.length !== 1 ? "s" : ""}`}
+                        </Btn>
+                      </div>
+                    )}
                   </div>
                 </div>
 
